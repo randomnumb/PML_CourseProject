@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="Pml courseproject : Repo for the Practical Machine Learning Course Project">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Pml courseproject</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/randomnumb/PML_CourseProject">View on GitHub</a>
+
+          <h1 id="project_title">Pml courseproject</h1>
+          <h2 id="project_tagline">Repo for the Practical Machine Learning Course Project</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/randomnumb/PML_CourseProject/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/randomnumb/PML_CourseProject/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <p>&lt;!DOCTYPE html&gt;</p>
+
+<p></p>
+
+<p></p>
+
+<p>
+
+</p>
+
+<p></p>
+
+<p></p>PML - Course Project
+
+
+
+<p>
+</p>
+
+
+
+
+
+
+
+code{white-space: pre;}
+
+<p></p>
+
+
+
+
+  pre:not([class]) {
+    background-color: white;
+  }
+
+
+
+
+<p></p>
+
+<p></p>
+
+
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+
+
+<div>
+
+
+<div id="header">
+<h1>
+<a id="pml---course-project" class="anchor" href="#pml---course-project" aria-hidden="true"><span class="octicon octicon-link"></span></a>PML - Course Project</h1>
+<h4>
+<a id="december-26-2015" class="anchor" href="#december-26-2015" aria-hidden="true"><span class="octicon octicon-link"></span></a><em>December 26, 2015</em>
+</h4>
+</div>
+
+<div id="overview">
+<h2>
+<a id="overview" class="anchor" href="#overview" aria-hidden="true"><span class="octicon octicon-link"></span></a>Overview</h2>
+<p>The goal of this porject is to use the Weight Lifting Exercise Dataset from to build a model that can predict if participants were performing a curl correctly or performing an incorrect motion in 1 of 5 ways. Information about the data can be found at <a href="http://groupware.les.inf.puc-rio.br/har">http://groupware.les.inf.puc-rio.br/har</a>. This write-up will discuss perparing the data for modeling, fitting the model, and predicting the 20 test cases.</p>
+</div>
+
+<div id="data-preparation">
+<h2>
+<a id="data-preparation" class="anchor" href="#data-preparation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Data Preparation</h2>
+<p>The initial data is in a raw form with some blanks and error codes. We set these to NA in our read statement.</p>
+<pre><code>library(caret)</code></pre>
+<pre><code>## Loading required package: lattice
+## Loading required package: ggplot2</code></pre>
+<pre><code>download.file(url='https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',
+              destfile='./PML_train.csv')
+
+#Read in data setting empty and error values to NA.
+WL &lt;- read.csv('./PML_train.csv',na.strings = c("NA","#DIV/0!",""),as.is = TRUE)
+WL &lt;- data.frame(WL)</code></pre>
+<p>Create a training and test set to estimate out of sample error.</p>
+<pre><code>inTrain &lt;- createDataPartition(y = WL$classe, p=.75, list = F)
+WLtrain &lt;- WL[inTrain,]
+WLtest &lt;- WL[-inTrain,]</code></pre>
+<p>The predictors are to be measurments from various sensors worn by the participants. Thus for predition purposes I’ll ignore the first 6 columns which are participant name, timestamps, and other experiment variables.</p>
+<pre><code>exp_vars &lt;- grep("X|user_name|raw_timestamp_part_1|raw_timestamp_part_2|cvtd_timestamp|num_window",names(WLtrain))
+WLtrain &lt;- WLtrain[,-exp_vars]</code></pre>
+<p>A number of the predictors still have many missing values. There are only 221 complete observations all of the predictors. I’ve fit a Gradient Boosting Machine with the complete dataset with missing values, but accuracy was only 49.93% (not shown). Far greater accuracy can be achieved by removing the variables with missing values.</p>
+<pre><code>#clean variables with missing values
+null_count &lt;- sapply(WLtrain, function(x) sum(is.na(x)))
+keep &lt;- null_count==0
+WLtrain &lt;- WLtrain[,keep]</code></pre>
+<p>The prediction target is the classe variable. We’ll make this a factor and look at a quick frequency and plot it by two of the most important varaibles.</p>
+<pre><code>WL$classe &lt;- factor(WL$classe)
+table(WL$classe)</code></pre>
+<pre><code>## 
+##    A    B    C    D    E 
+## 5580 3797 3422 3216 3607</code></pre>
+<pre><code>library(ggplot2)
+ggplot(aes(x=roll_belt,y=magnet_dumbbell_y,colour=classe), data=WLtrain) + geom_point() + coord_cartesian(ylim = c(-1000,1000)) + ggtitle("Classe by roll_belt and magnet_dumbell_y")</code></pre>
+<p><img title alt width="672"></p>
+</div>
+
+<div id="modeling">
+<h2>
+<a id="modeling" class="anchor" href="#modeling" aria-hidden="true"><span class="octicon octicon-link"></span></a>Modeling</h2>
+<p>We’ll fit a random forrest to the model. We’ll use 5 fold cross validation in the train control to help mitigate potential overfitting.</p>
+<pre><code>Control1 &lt;- trainControl(method = "cv", number = 5)
+modFit1 &lt;- train(classe ~ ., data=WLtrain, method ="rf", importance = T, trControl = Control1)</code></pre>
+<pre><code>## Loading required package: randomForest
+## randomForest 4.6-12
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre><code>modFit1</code></pre>
+<pre><code>## Random Forest 
+## 
+## 14718 samples
+##    53 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## No pre-processing
+## Resampling: Cross-Validated (5 fold) 
+## Summary of sample sizes: 11776, 11774, 11775, 11774, 11773 
+## Resampling results across tuning parameters:
+## 
+##   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
+##    2    0.9914388  0.9891694  0.002234366  0.002827182
+##   27    0.9925263  0.9905457  0.001223866  0.001548223
+##   53    0.9858002  0.9820364  0.003285244  0.004156341
+## 
+## Accuracy was used to select the optimal model using  the largest value.
+## The final value used for the model was mtry = 27.</code></pre>
+<p>We can examine the selection process as predictors were added.</p>
+<pre><code>plot(modFit1, log = "y", lwd = 2, main = "Random forest accuracy", xlab = "Predictors",  ylab = "Accuracy")</code></pre>
+<p><img title alt width="672"></p>
+<p>The final model utilized 27 predictors. “Roll belt” and “magnet dumbbell y” were the most important predictors.</p>
+<pre><code>varImp(modFit1)</code></pre>
+<pre><code>## rf variable importance
+## 
+##   variables are sorted by maximum importance across the classes
+##   only 20 most important variables shown (out of 53)
+## 
+##                       A     B     C     D      E
+## roll_belt         78.81 82.84 80.71 81.32 100.00
+## pitch_belt        34.64 98.28 65.84 51.22  43.44
+## pitch_forearm     61.97 78.82 95.27 63.86  65.47
+## magnet_dumbbell_y 75.28 75.24 89.27 69.31  64.68
+## yaw_belt          63.35 67.25 66.92 79.62  52.40
+## magnet_dumbbell_z 78.95 62.23 77.48 57.46  58.99
+## accel_forearm_x   25.98 43.06 36.20 53.19  39.87
+## roll_forearm      52.81 44.84 50.15 40.13  40.23
+## gyros_dumbbell_y  45.62 32.76 43.66 34.73  33.46
+## yaw_arm           45.47 36.50 31.81 37.86  24.38
+## gyros_belt_z      30.92 34.04 39.03 29.41  45.03
+## accel_dumbbell_y  38.22 38.11 44.75 37.22  37.20
+## accel_dumbbell_z  33.65 37.99 31.34 36.61  43.76
+## roll_dumbbell     25.86 40.37 25.56 28.07  36.78
+## magnet_arm_z      26.88 38.64 26.94 28.33  25.55
+## magnet_belt_z     29.07 37.81 29.92 37.74  33.87
+## magnet_belt_x     22.33 37.62 32.96 24.44  34.37
+## magnet_belt_y     23.22 36.62 33.99 28.28  33.06
+## magnet_forearm_z  35.68 35.77 34.49 33.01  36.61
+## gyros_arm_y       31.87 36.60 32.09 35.22  28.21</code></pre>
+</div>
+
+<div id="out-of-sample-error-prediction">
+<h2>
+<a id="out-of-sample-error-prediction" class="anchor" href="#out-of-sample-error-prediction" aria-hidden="true"><span class="octicon octicon-link"></span></a>Out of Sample Error Prediction</h2>
+<p>To estimate the out of sample error we apply the prediction to the test set.</p>
+<pre><code>test.Predict = predict(modFit1, WLtest)
+confusionMatrix(test.Predict,WLtest$classe)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1392    2    0    0    0
+##          B    3  947    7    0    1
+##          C    0    0  846   17    2
+##          D    0    0    2  786    3
+##          E    0    0    0    1  895
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.9923          
+##                  95% CI : (0.9894, 0.9945)
+##     No Information Rate : 0.2845          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9902          
+##  Mcnemar's Test P-Value : NA              
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9978   0.9979   0.9895   0.9776   0.9933
+## Specificity            0.9994   0.9972   0.9953   0.9988   0.9998
+## Pos Pred Value         0.9986   0.9885   0.9780   0.9937   0.9989
+## Neg Pred Value         0.9991   0.9995   0.9978   0.9956   0.9985
+## Prevalence             0.2845   0.1935   0.1743   0.1639   0.1837
+## Detection Rate         0.2838   0.1931   0.1725   0.1603   0.1825
+## Detection Prevalence   0.2843   0.1954   0.1764   0.1613   0.1827
+## Balanced Accuracy      0.9986   0.9976   0.9924   0.9882   0.9965</code></pre>
+<p>The out of sample error prediction is 1-accuracy, which has an estimate of 0.86% with a 95% CI of (0.62%, 1.16%).</p>
+</div>
+
+<p></p>
+</div>
+
+
+
+
+
+
+
+<p>
+</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Pml courseproject maintained by <a href="https://github.com/randomnumb">randomnumb</a></p>
+        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
