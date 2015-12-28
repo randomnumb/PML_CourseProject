@@ -1,0 +1,83 @@
+---
+title: "PML - Course Project"
+date: "December 26, 2015"
+output: html_document
+---
+
+## Overview
+The goal of this porject is to use the Weight Lifting Exercise Dataset from to build a model that can predict if participants were performing a curl correctly or performing an incorrect motion in 1 of 5 ways. Information about the data can be found at http://groupware.les.inf.puc-rio.br/har.  This write-up will discuss perparing the data for modeling, fitting the model, and predicting the 20 test cases. 
+
+## Data Preparation
+The initial data is in a raw form with some blanks and error codes.  We set these to NA in our read statement.
+```{r}
+library(caret)
+download.file(url='https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',
+              destfile='./PML_train.csv')
+
+#Read in data setting empty and error values to NA.
+WL <- read.csv('./PML_train.csv',na.strings = c("NA","#DIV/0!",""),as.is = TRUE)
+WL <- data.frame(WL)
+```
+
+Create a training and test set to estimate out of sample error.
+```{r}
+inTrain <- createDataPartition(y = WL$classe, p=.75, list = F)
+WLtrain <- WL[inTrain,]
+WLtest <- WL[-inTrain,]
+```
+
+The predictors are to be measurments from various sensors worn by the participants.  Thus for predition purposes I'll ignore the first 6 columns which are participant name, timestamps, and other experiment variables. 
+
+```{r}
+exp_vars <- grep("X|user_name|raw_timestamp_part_1|raw_timestamp_part_2|cvtd_timestamp|num_window",names(WLtrain))
+WLtrain <- WLtrain[,-exp_vars]
+```
+
+A number of the predictors still have many missing values. There are only 221 complete observations all of the predictors. I've fit a Gradient Boosting Machine with the complete dataset with missing values, but accuracy was only 49.93% (not shown).  Far greater accuracy can be achieved by removing the variables with missing values. 
+
+```{r}
+#clean variables with missing values
+null_count <- sapply(WLtrain, function(x) sum(is.na(x)))
+keep <- null_count==0
+WLtrain <- WLtrain[,keep]
+```
+
+The prediction target is the classe variable.  We'll make this a factor and look at a quick frequency and plot it by two of the most important varaibles.
+
+```{r}
+WL$classe <- factor(WL$classe)
+table(WL$classe)
+library(ggplot2)
+ggplot(aes(x=roll_belt,y=magnet_dumbbell_y,colour=classe), data=WLtrain) + geom_point() + coord_cartesian(ylim = c(-1000,1000)) + ggtitle("Classe by roll_belt and magnet_dumbell_y")
+```
+
+## Modeling
+
+We'll fit a random forrest to the model.  We'll use 5 fold cross validation in the train control to help mitigate potential overfitting.
+
+```{r}
+Control1 <- trainControl(method = "cv", number = 5)
+modFit1 <- train(classe ~ ., data=WLtrain, method ="rf", importance = T, trControl = Control1)
+modFit1
+```
+
+We can examine the selection process as predictors were added.
+```{r}
+plot(modFit1, log = "y", lwd = 2, main = "Random forest accuracy", xlab = "Predictors",  ylab = "Accuracy")
+```
+
+The final model utilized 27 predictors.  "Roll belt" and "magnet dumbbell y" were the most important predictors.
+```{r}
+varImp(modFit1)
+```
+
+## Out of Sample Error Prediction
+
+To estimate the out of sample error we apply the prediction to the test set.
+
+```{r}
+test.Predict = predict(modFit1, WLtest)
+confusionMatrix(test.Predict,WLtest$classe)
+```
+
+The out of sample error prediction is 1-accuracy, which has an estimate of 0.86% with a 95% CI of (0.62%, 1.16%).
